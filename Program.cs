@@ -8,7 +8,7 @@ using System.Xml.Linq;
 
 namespace DocsGenerator
 {
-    internal class Program
+    public class Program
     {
         public static List<ClassRecord> classRecords = new();
         static SyntaxTree[] trees;
@@ -41,22 +41,27 @@ namespace DocsGenerator
             foreach (XElement member in members.Where(m => m.Attribute("name").Value.StartsWith('T')))
             {
                 string name = member.Attribute("name").Value[2..];
+                var rawNode = GetNode(trees, name);
+                if (rawNode == null) continue;
+                if (rawNode is not ClassDeclarationSyntax) continue;
+                var node = rawNode as ClassDeclarationSyntax;
 
                 ClassRecord r = new()
                 {
                     FullQualifier = name,
                     Name = name.Split('.').Last(),
-
-                }
+                    ClassType = GetClassType(node),
+                };
             }
         }
 
-        public static ClassType GetClassType(string fullName)
+        public static ClassType GetClassType(this ClassDeclarationSyntax s)
         {
-            foreach (var tree in trees)
-            {
-                
-            }
+            if (s.Identifier.Text.EndsWith("Attribute")) return ClassType.Attribute;
+
+
+
+            return ClassType.Class;
         }
 
         public static SyntaxNode GetNodeAt(this SyntaxNode node, string fullName)
@@ -83,6 +88,17 @@ namespace DocsGenerator
             return null;
         }
 
+        public static SyntaxNode GetNode(this SyntaxTree[] trees, string name)
+        {
+            SyntaxNode node;
+            foreach (var tree in trees)
+            {
+                node = GetNodeAt(tree.GetRoot(), name);
+                if (node != null) return node;
+            }
+            return null;
+        }
+
         public static string GetName(this MemberDeclarationSyntax member)
         {
             return member switch
@@ -91,12 +107,13 @@ namespace DocsGenerator
                 TypeDeclarationSyntax s => s.Identifier.Text,
                 FieldDeclarationSyntax s => s.Declaration.Variables.First().Identifier.Text,
                 PropertyDeclarationSyntax s => s.Identifier.Text,
+                MethodDeclarationSyntax s => s.Identifier.Text,
                 _ => null
             };
         }
     }
 
-    class Record
+    public class Record
     {
         public string FullQualifier;
         public string Name;
@@ -105,19 +122,22 @@ namespace DocsGenerator
     public enum ClassType
     {
         Class,
+        Struct,
         Enum,
         Abstract,
         Interface,
+        Static,
+        Attribute,
         Unknown
     }
 
-    class ClassRecord : Record
+    public class ClassRecord : Record
     {
         public ClassType ClassType;
-        public List<Record> Members;
+        public List<Record> Members = new();
     }
 
-    class FieldRecord : Record
+    public class FieldRecord : Record
     {
         public string Type;
     }
