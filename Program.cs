@@ -8,9 +8,9 @@ using System.Xml.Linq;
 
 namespace DocsGenerator
 {
-    public class Program
+    public static class Program
     {
-        public static List<ClassRecord> classRecords = new();
+        public static List<TypeRecord> classRecords = new();
         static SyntaxTree[] trees;
         static SemanticModel[] models;
 
@@ -46,22 +46,24 @@ namespace DocsGenerator
                 if (rawNode is not ClassDeclarationSyntax) continue;
                 var node = rawNode as ClassDeclarationSyntax;
 
-                ClassRecord r = new()
+                TypeRecord r = new()
                 {
                     FullQualifier = name,
                     Name = name.Split('.').Last(),
-                    ClassType = GetClassType(node),
+                    ClassType = GetTypeKind(node),
                 };
             }
         }
 
-        public static ClassType GetClassType(this ClassDeclarationSyntax s)
+        public static TypeKind GetTypeKind(this MemberDeclarationSyntax syntax)
         {
-            if (s.Identifier.Text.EndsWith("Attribute")) return ClassType.Attribute;
+            switch (syntax)
+            {
+                case ClassDeclarationSyntax s
+            }
 
 
-
-            return ClassType.Class;
+            return TypeKind.Unknown;
         }
 
         public static SyntaxNode GetNodeAt(this SyntaxNode node, string fullName)
@@ -104,6 +106,7 @@ namespace DocsGenerator
             return member switch
             {
                 NamespaceDeclarationSyntax s => s.Name.ToString(),
+                EnumDeclarationSyntax s => s.Identifier.Text,
                 TypeDeclarationSyntax s => s.Identifier.Text,
                 FieldDeclarationSyntax s => s.Declaration.Variables.First().Identifier.Text,
                 PropertyDeclarationSyntax s => s.Identifier.Text,
@@ -119,7 +122,7 @@ namespace DocsGenerator
         public string Name;
     }
 
-    public enum ClassType
+    public enum TypeKind
     {
         Class,
         Struct,
@@ -131,9 +134,9 @@ namespace DocsGenerator
         Unknown
     }
 
-    public class ClassRecord : Record
+    public class TypeRecord : Record
     {
-        public ClassType ClassType;
+        public TypeKind ClassType;
         public List<Record> Members = new();
     }
 
