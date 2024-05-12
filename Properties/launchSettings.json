@@ -2,11 +2,7 @@
   "profiles": {
     "DocsGenerator": {
       "commandName": "Project",
-      "commandLineArgs": "\"C:\\Users\\jonat\\Coding\\QuatschAndSuch\\Commons\\bin\\Debug\\net7.0\\Commons.xml\" \"C:\\Users\\jonat\\Coding\\QuatschAndSuch\\docs\""
-    },
-    "DocsTesting": {
-      "commandName": "Project",
-      "commandLineArgs": "\"C:\\Users\\jonat\\Coding\\DocsTesting\\bin\\Debug\\net7.0\\DocsTesting.xml\""
+      "commandLineArgs": "\"C:\\Users\\jonat\\Coding\\QuatschAndSuch\""
     }
   }
 }
