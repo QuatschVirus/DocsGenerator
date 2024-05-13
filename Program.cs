@@ -1,6 +1,5 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Xml;
 using System.Xml.Linq;
@@ -18,35 +17,29 @@ namespace DocsGenerator
 
         static JsonElement config;
 
-        static Solution solution;
-
         public static SyntaxTree[] trees;
-        public static List<Record> documentedRecords = new();
+        public static UnifiedTree<Record> records = new("Code Dcoumentation");
 
         static void Main(string[] args)
         {
             string basepath = (args.Length > 0) ? args[0] : ".";
-            config = JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(Path.Combine(basepath, configPath)));
-            string solutionPath = Path.Combine(basepath, config.GetProperty("solution").GetString());
-            Console.WriteLine($"Beginning documentation generation for {basepath}, looking for solution {solutionPath}");
-            Console.WriteLine(File.Exists(solutionPath));
+            string cp = Path.Combine(basepath, configPath);
+            if (File.Exists(cp)) {
+                config = JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(cp));
+            }
+            Console.WriteLine("Welcome to DocsGenerator! Config loaded, beginning import...");
 
-            Console.WriteLine($"Found solution at {solution.FilePath} with {solution.ProjectIds.Count} projects");
+            string[] files = Directory.GetFiles(basepath, "*.cs");
+            trees = files.Select(p => CSharpSyntaxTree.ParseText(File.ReadAllText(p))).ToArray();
+            Console.WriteLine($"Import complete, imported {trees.Length} syntax tress. Beginning indexing");
 
-            var ts = from p in solution.Projects
-                    from d in p.Documents
-                    where d.SupportsSyntaxTree
-                    select d.GetSyntaxTreeAsync().Result;
-            trees = ts.ToArray();
-
-            Console.WriteLine("Import complete, indexing...");
             DocumentationWalker walker = new();
             foreach (var t in trees)
             {
                 Console.WriteLine($"Indexing tree for {t.FilePath}");
                 walker.Visit(t.GetRoot());
             }
-            Console.WriteLine($"Indexing complete, found {documentedRecords.Count} records");
+            Console.WriteLine($"Indexing complete, found {records.Count} records");
         }
     }
 
