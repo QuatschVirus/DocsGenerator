@@ -2,7 +2,7 @@
   "profiles": {
     "DocsGenerator": {
       "commandName": "Project",
-      "commandLineArgs": "\"C:\\Users\\jonat\\Coding\\QuatschAndSuch\""
+      "commandLineArgs": "\"C:\\Users\\jonat\\Coding\\QuatschAndSuch\\Commons\""
     }
   }
 }

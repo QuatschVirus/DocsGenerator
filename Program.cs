@@ -30,6 +30,7 @@ namespace DocsGenerator
             Console.WriteLine("Welcome to DocsGenerator! Config loaded, beginning import...");
 
             string[] files = Directory.GetFiles(basepath, "*.cs");
+            Console.WriteLine($"Found {files.Length} files to index");
             trees = files.Select(p => CSharpSyntaxTree.ParseText(File.ReadAllText(p))).ToArray();
             Console.WriteLine($"Import complete, imported {trees.Length} syntax tress. Beginning indexing");
 
@@ -47,8 +48,15 @@ namespace DocsGenerator
     {
         public override void VisitDocumentationCommentTrivia(DocumentationCommentTriviaSyntax node)
         {
-            Console.WriteLine(node.Parent.ToString());
+            var n = node.ParentTrivia.Token.Parent;
+            if (n is not MemberDeclarationSyntax) n = n.Parent;
+            Console.WriteLine(n.GetType().Name);
+            var m = n as MemberDeclarationSyntax;
+            var firstToken = m.ChildNodesAndTokens().ToList().Find(s => s.IsToken);
+            base.VisitDocumentationCommentTrivia(node);
         }
+
+        public DocumentationWalker() : base(SyntaxWalkerDepth.StructuredTrivia) { }
     }
 
     public class Identifier
