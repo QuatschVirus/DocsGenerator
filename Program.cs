@@ -29,7 +29,7 @@ namespace DocsGenerator
             }
             Console.WriteLine("Welcome to DocsGenerator! Config loaded, beginning import...");
 
-            string[] files = Directory.GetFiles(basepath, "*.cs");
+            string[] files = Directory.GetFiles(basepath, "*.cs", SearchOption.AllDirectories);
             Console.WriteLine($"Found {files.Length} files to index");
             trees = files.Select(p => CSharpSyntaxTree.ParseText(File.ReadAllText(p))).ToArray();
             Console.WriteLine($"Import complete, imported {trees.Length} syntax tress. Beginning indexing");
@@ -37,7 +37,6 @@ namespace DocsGenerator
             DocumentationWalker walker = new();
             foreach (var t in trees)
             {
-                Console.WriteLine($"Indexing tree for {t.FilePath}");
                 walker.Visit(t.GetRoot());
             }
             Console.WriteLine($"Indexing complete, found {records.Count} records");
@@ -50,13 +49,111 @@ namespace DocsGenerator
         {
             var n = node.ParentTrivia.Token.Parent;
             if (n is not MemberDeclarationSyntax) n = n.Parent;
-            Console.WriteLine(n.GetType().Name);
             var m = n as MemberDeclarationSyntax;
-            var firstToken = m.ChildNodesAndTokens().ToList().Find(s => s.IsToken);
-            base.VisitDocumentationCommentTrivia(node);
+            Scope s = GetScope(m);
+            RecordKind k = GetKind(m);
+            Identifier i = GetIdentifier(m);
+            Flags f = GetFlags(m);
+            string signature = GetSignature(m);
+
+            Console.WriteLine($"{s} {k} {i} ({f}) [{signature}]");
+            string xml = node.ToString().Replace("///", "");
+            XmlDocument doc = new();
+            doc.LoadXml(xml);
+            Console.WriteLine(xml);
+
+            Record r = new(i, k, s, f, signature, doc.ChildNodes);
+            Program.records.AddNode(i.Qualifier, new(i.Name, r, Program.records));
         }
 
         public DocumentationWalker() : base(SyntaxWalkerDepth.StructuredTrivia) { }
+
+        public static string GetSignature(MemberDeclarationSyntax m)
+        {
+            string basic = m.WithAttributeLists(new SyntaxList<AttributeListSyntax>()).ToString();
+
+            int semiColonIndex = basic.IndexOf(';');
+            int equalsIndex = basic.IndexOf("=");
+            int bracketIndex = basic.IndexOf("{");
+            int stopIndex = Math.Min(Math.Min(semiColonIndex > 0 ? semiColonIndex : basic.Length, equalsIndex > 0 ? equalsIndex : basic.Length), bracketIndex > 0 ? bracketIndex : basic.Length);
+
+            return basic[..stopIndex].Trim();
+        }
+        public static string GetQualifiedName(SyntaxNode n)
+        {
+            string name = n switch
+            {
+                CompilationUnitSyntax => "",
+                NamespaceDeclarationSyntax s => GetQualifiedName(s.Parent) + "." + s.Name,
+                ClassDeclarationSyntax s => GetQualifiedName(s.Parent) + "." + s.Identifier,
+                EnumDeclarationSyntax s => GetQualifiedName(s.Parent) + "." + s.Identifier,
+                InterfaceDeclarationSyntax s => GetQualifiedName(s.Parent) + "." + s.Identifier,
+                DelegateDeclarationSyntax s => GetQualifiedName(s.Parent) + "." + s.Identifier,
+                EventDeclarationSyntax s => GetQualifiedName(s.Parent) + "." + s.Identifier,
+                MethodDeclarationSyntax s => GetQualifiedName(s.Parent) + "." + s.Identifier,
+                PropertyDeclarationSyntax s => GetQualifiedName(s.Parent) + "." + s.Identifier,
+                FieldDeclarationSyntax s => GetQualifiedName(s.Parent) + "." + s.DescendantTokens().Where(t => t.IsKind(SyntaxKind.IdentifierToken)).First(),
+                _ => GetQualifiedName(n.Parent)
+            };
+            return name.Trim().Trim('.');
+        }
+
+        public static Identifier GetIdentifier(SyntaxNode n) => new(GetQualifiedName(n));
+
+        public static RecordKind GetKind(MemberDeclarationSyntax m)
+        {
+            return m switch
+            {
+                NamespaceDeclarationSyntax => RecordKind.Namespace,
+                ClassDeclarationSyntax => RecordKind.Class,
+                EnumDeclarationSyntax => RecordKind.Enum,
+                InterfaceDeclarationSyntax   => RecordKind.Interface,
+                DelegateDeclarationSyntax => RecordKind.Delegate,
+                EventDeclarationSyntax => RecordKind.Event,
+                MethodDeclarationSyntax => RecordKind.Method,
+                PropertyDeclarationSyntax => RecordKind.Property,
+                FieldDeclarationSyntax => RecordKind.Field,
+                EnumMemberDeclarationSyntax => RecordKind.EnumMember,
+                _ => RecordKind.Unkown
+            };
+        }
+
+        public static Scope GetScope(MemberDeclarationSyntax m)
+        {
+            if (m is EnumMemberDeclarationSyntax)
+            {
+                return GetScope(m.Parent as EnumDeclarationSyntax);
+            }
+            var firstToken = m.ChildNodesAndTokens().ToList().Find(s => s.IsToken);
+            return firstToken.Kind() switch
+            {
+                SyntaxKind.PublicKeyword => Scope.Public,
+                SyntaxKind.PrivateKeyword => Scope.Private,
+                SyntaxKind.ProtectedKeyword => Scope.Protected,
+                SyntaxKind.InternalKeyword => Scope.Internal,
+                _ => Scope.Private
+            };
+        }
+
+        public static Flags GetFlags(MemberDeclarationSyntax m)
+        {
+            Flags output = Flags.None;
+            var tokens = m.ChildTokens();
+            
+            if (tokens.Any(t => t.IsKind(SyntaxKind.AbstractKeyword))) output |= Flags.Abstract;
+            if (tokens.Any(t => t.IsKind(SyntaxKind.StaticKeyword))) output |= Flags.Static;
+            if (tokens.Any(t => t.IsKind(SyntaxKind.OverrideKeyword))) output |= Flags.Override;
+            if (tokens.Any(t => t.IsKind(SyntaxKind.VirtualKeyword))) output |= Flags.Virtual;
+            if (m.ChildNodes().Any(n => n.IsKind(SyntaxKind.TypeParameterList))) output |= Flags.Generic;
+
+            if (m is MethodDeclarationSyntax)
+            {
+                ParameterListSyntax p = m.ChildNodes().OfType<ParameterListSyntax>().First();
+                if (p.DescendantTokens().Any(t => t.IsKind(SyntaxKind.ThisKeyword))) output |= Flags.Extension;
+            }
+
+            return output;
+        }
     }
 
     public class Identifier
@@ -83,6 +180,11 @@ namespace DocsGenerator
             split = Qualifier.Split('.');
             Name = split.Last();
         }
+
+        public override string ToString()
+        {
+            return Qualifier;
+        }
     }
 
     public class Record
@@ -94,11 +196,11 @@ namespace DocsGenerator
 
         public readonly string Signature;
 
-        public readonly List<XmlElement> documentation = new();
+        public readonly XmlNodeList documentation = new();
 
         public bool HasFlag(Flags flag) => Flags.HasFlag(flag);
 
-        public Record(Identifier identifier, RecordKind kind, Scope scope, Flags flags, string signature, List<XmlElement> documentation)
+        public Record(Identifier identifier, RecordKind kind, Scope scope, Flags flags, string signature, XmlNodeList documentation)
         {
             Identifier = identifier;
             Kind = kind;
@@ -111,6 +213,7 @@ namespace DocsGenerator
 
     public enum RecordKind
     {
+        Unkown,
         Namespace,
         Class,
         Enum,
@@ -119,7 +222,8 @@ namespace DocsGenerator
         Event,
         Method,
         Property,
-        Field
+        Field,
+        EnumMember
     }
 
     public enum Scope

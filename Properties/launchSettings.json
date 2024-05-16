@@ -3,6 +3,10 @@
     "DocsGenerator": {
       "commandName": "Project",
       "commandLineArgs": "\"C:\\Users\\jonat\\Coding\\QuatschAndSuch\\Commons\""
+    },
+    "DocsGenerator (UKE)": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\jonwas\\QuatschAndSuch\""
     }
   }
 }
