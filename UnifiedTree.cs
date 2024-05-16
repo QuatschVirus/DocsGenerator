@@ -4,16 +4,19 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 
 #nullable enable
 namespace DocsGenerator
 {
+    public delegate void TraverserDelegate<T>(string path, UnifiedTreeNode<T> node);
+
     public class UnifiedTree<T>
     {
         public readonly char seperator = '.';
         public readonly string upwards = "#";
         public readonly string horizontal = "";
-        public readonly UnifiedTreeNode<T> Root;
+        public UnifiedTreeNode<T> Root { get; protected set; }
 
         public UnifiedTree(UnifiedTreeNode<T> root, char seperator = '.', string upwards = "#", string horizontal = "")
         {
@@ -33,14 +36,16 @@ namespace DocsGenerator
 
         public UnifiedTree<T> WithSettings(char seperator, string upwards, string horizontal)
         {
-            return new(Root, seperator, upwards, horizontal);
+            UnifiedTree<T> newTree = new(Root.Name, seperator, upwards, horizontal);
+            newTree.Root = Root.Clone(newTree, null);
+            return newTree;
         }
 
         public UnifiedTree<T> WithFilePathSettings() => WithSettings('/', "..", ".");
 
         public override string ToString()
         {
-            return "Unified Tree:\n" + Root.ToString();
+            return $"Unified Tree ({Count}):\n" + Root.ToString();
         }
 
         public UnifiedTreeNode<T>? GetNode(string path)
@@ -50,15 +55,19 @@ namespace DocsGenerator
 
         public int Count => Root.Count;
 
-        public void AddNode(string path, UnifiedTreeNode<T> node)
+        public void AddNode(string path, T? value)
         {
-            Root.EnsureNode(path.Split(seperator).SkipLast(1).ToArray(), node);
+            Root.EnsureNode(path.Split(seperator), value);
+        }
+
+        public void Traverse(TraverserDelegate<T> @delegate)
+        {
+            Root.Traverse(@delegate);
         }
     }
-
     public class UnifiedTreeNode<T>
     {
-        public readonly UnifiedTree<T> Tree;
+        public UnifiedTree<T> Tree { get; protected set; }
 
         public UnifiedTreeNode<T>? Parent { get; protected set; }
         protected readonly Dictionary<string, UnifiedTreeNode<T>> children = new();
@@ -68,6 +77,8 @@ namespace DocsGenerator
         protected T? value;
         protected bool hasValue;
 
+        public bool HasValue => hasValue;
+
         public T? Value
         {
             get => value;
@@ -76,6 +87,17 @@ namespace DocsGenerator
                 hasValue = true;
                 this.value = value;
             }
+        }
+
+        public UnifiedTreeNode<T> Clone(UnifiedTree<T> forTree, UnifiedTreeNode<T>? parent)
+        {
+            UnifiedTreeNode<T> node = new(Name, Value, forTree, parent);
+            node.hasValue = HasValue;
+            foreach (var c in Children())
+            {
+                c.Clone(forTree, node);
+            }
+            return node;
         }
 
         public void ClearValue()
@@ -146,13 +168,12 @@ namespace DocsGenerator
         public string GetPath(char seperator)
         {
             if (Parent == null) return Name;
-            return Parent.GetPath(seperator) + "." + Name;
+            return Parent.GetPath(seperator) + Tree.seperator + Name;
         }
 
         public string Path => GetPath(Tree.seperator);
 
         public IEnumerable<UnifiedTreeNode<T>> Children() => children.Values;
-        public IEnumerable<UnifiedTreeNode<T>> Descendants() => Children().Concat(Children().SelectMany(x => x.Descendants()));
 
         public int Count => children.Values.Sum(x => x.Count) + 1;
 
@@ -160,7 +181,12 @@ namespace DocsGenerator
 
         public string ToString(int depth)
         {
-            return string.Concat(Enumerable.Repeat("| ", depth)) + Name + (hasValue ? " *" : "") + "\n";
+            string output = string.Concat(Enumerable.Repeat("| ", depth)) + Name + (hasValue ? " *" : "") + "\n";
+            foreach (var child in Children())
+            {
+                output += child.ToString(depth + 1);
+            }
+            return output;
         }
 
         public override string ToString()
@@ -168,17 +194,37 @@ namespace DocsGenerator
             return ToString(0);
         }
 
-        public void EnsureNode(string[] path, UnifiedTreeNode<T> node)
+        public void EnsureNode(string[] path, T? value)
         {
-            if (path.Length == 0) node.Migrate(this);
-            UnifiedTreeNode<T>? n = GetNode(path.First());
-            if (n == null)
+            if (path.Length == 0)
             {
-                new UnifiedTreeNode<T>(path.First(), Tree, this).EnsureNode(path[1..], node);
+                Value = value;
             } else
             {
-                n.EnsureNode(path[1..], node);
+                UnifiedTreeNode<T>? n = GetNode(path.First());
+                if (n == null)
+                {
+                    new UnifiedTreeNode<T>(path.First(), Tree, this).EnsureNode(path[1..], value);
+                }
+                else
+                {
+                    n.EnsureNode(path[1..], value);
+                }
             }
+        }
+
+        public void Traverse(TraverserDelegate<T> @delegate)
+        {
+            @delegate(Path, this);
+            foreach (var child in Children())
+            {
+                child.Traverse(@delegate);
+            }
+        }
+
+        public void Retree(UnifiedTree<T> tree)
+        {
+            Tree = tree;
         }
     }
 }
