@@ -174,6 +174,7 @@ namespace DocsGenerator
         public string Path => GetPath(Tree.seperator);
 
         public IEnumerable<UnifiedTreeNode<T>> Children() => children.Values;
+        public IEnumerable<UnifiedTreeNode<T>> Descendants() => Children().Concat(Children().SelectMany(c => c.Descendants()));
 
         public int Count => children.Values.Sum(x => x.Count) + 1;
 

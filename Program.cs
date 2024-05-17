@@ -59,10 +59,17 @@ namespace DocsGenerator
                 var r = node.Value;
                 if ((int)r.Kind < 7)
                 {
-                    
+                    var docMembers = from c in node.Children()
+                                     where c.HasValue
+                                     let v = c.Value
+                                     where (int)v.Kind > 6
+                                     select v;
+                    string fileContent = r.GetMarkdown(docMembers.ToList()) + credits;
+                    string p = Path.Combine(docsPath, node.Path);
+
+                    Directory.CreateDirectory(p);
+                    File.WriteAllText(Path.Combine(p, "index.md"), fileContent);
                 }
-
-
             }
         }
     }
@@ -295,9 +302,19 @@ namespace DocsGenerator
                         }
                     }
                 }
-
-                output += Program.credits;
                 return output;
+            } else if (Kind == RecordKind.Field)
+            {
+
+            } else if (Kind == RecordKind.Property)
+            {
+
+            } else if (Kind == RecordKind.Method)
+            {
+
+            } else if (Kind == RecordKind.EnumMember)
+            {
+
             } else
             {
                 return "";
