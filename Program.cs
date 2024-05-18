@@ -7,6 +7,7 @@ using System.Collections.Frozen;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace DocsGenerator
 {
@@ -19,6 +20,7 @@ namespace DocsGenerator
 
         public static SyntaxTree[] trees;
         public static UnifiedTree<Record> records = new("Code Dcoumentation");
+        public static UnifiedTree<Record> pathedRecords;
 
         static string docsPath;
 
@@ -26,7 +28,11 @@ namespace DocsGenerator
         {
             string basepath = (args.Length > 0) ? args[0] : ".";
             string cp = Path.Combine(basepath, configPath);
-            docsPath = Path.Combine(basepath, "/docs");
+            docsPath = Path.Combine(basepath, "docs");
+
+            Console.WriteLine(basepath);
+            Console.WriteLine(docsPath);
+
             if (File.Exists(cp)) {
                 config = JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(cp));
             }
@@ -45,14 +51,14 @@ namespace DocsGenerator
             Console.WriteLine($"Indexing complete, records:");
             Console.WriteLine(records.ToString());
 
-            UnifiedTree<Record> pathedRecords = records.WithFilePathSettings();
-            Directory.Delete(Path.Combine(docsPath, pathedRecords.Root.Name), true);
-            pathedRecords.Traverse(TransformTree);
+            pathedRecords = records.WithFilePathSettings();
+            if (Directory.Exists(Path.Combine(docsPath, pathedRecords.Root.Name))) Directory.Delete(Path.Combine(docsPath, pathedRecords.Root.Name), true);
+            pathedRecords.Traverse<object, object>(TransformTree, null, out var _);
 
             
         }
 
-        public static void TransformTree(string path, UnifiedTreeNode<Record> node)
+        public static (object, bool) TransformTree(object _, string path, UnifiedTreeNode<Record> node)
         {
             if (node.HasValue)
             {
@@ -71,6 +77,60 @@ namespace DocsGenerator
                     File.WriteAllText(Path.Combine(p, "index.md"), fileContent);
                 }
             }
+            return (null, false);
+        }
+
+        public static (string, bool) SearchTree(string search, string path, UnifiedTreeNode<Record> node)
+        {
+            if (path.EndsWith(search))
+            {
+                if (node.HasValue)
+                {
+                    if ((int)node.Value.Kind > 6)
+                    {
+                        int lastSegment = path.LastIndexOf(node.Tree.seperator);
+                        string fixedPath = path[..lastSegment] + "#" + path[lastSegment..];
+                        return (fixedPath, false);
+                    }
+                }
+                return (path, false);
+            }
+            return (null, false);
+        }
+
+        public static string XMLtoMD(XElement xml)
+        {
+            if (xml == null) return null;
+
+            foreach (var e in xml.Descendants("c")) e.Value = "`" + e.Value + "`";
+            foreach (var e in xml.Descendants("code"))
+            {
+                string lang = e.Attribute("lang")?.Value ?? "cs";
+                e.Value = "```" + lang + "\n" + e.Value + "\n```";
+            }
+            foreach (var e in xml.Descendants("see"))
+            {
+                string r;
+                if ((r = e.Attribute("cref")?.Value) != null)
+                {
+                    var f = pathedRecords.Traverse(SearchTree, r, out var _);
+                    if (f.Count < 1)
+                    {
+                        e.Value += "<sup>!</sup>";
+                    } else if (f.Count > 1)
+                    {
+                        e.Value += "<sup>?</sup>";
+                    } else
+                    {
+                        e.Value = $"[{e.Value}]({f.First()})";
+                    }
+                } else if ((r = e.Attribute("href")?.Value) != null)
+                {
+                    e.Value = $"[{e.Value}]({r})";
+                }
+            }
+
+            return xml.Value;
         }
     }
 
@@ -253,13 +313,14 @@ namespace DocsGenerator
             {
                 List<Record> relevant = records.Where(r => (int)r.Kind > 6).ToList();
 
-                string output = $"---\n" +
-                    $"title:{Identifier.Name}\n" +
-                    $"---\n" +
-                    $"# {Signature}\n" +
+                string output = 
+                    $"# {Identifier.Name}\n" +
+                    $"*{Signature}*  \n" +
                     $"*{Identifier.Qualifier}*\n\n";
 
-                output += "> " + documentation + "\n\n";
+                output += "## Summary\n" + (Program.XMLtoMD(documentation.Element("summary")) ?? "*No summary provided*") + "\n\n";
+                var remarks = Program.XMLtoMD(documentation.Element("remarks"));
+                if (remarks != null) output += "## Remarks\n" + remarks + "\n\n";
 
                 if (Kind == RecordKind.Enum)
                 {
@@ -305,16 +366,51 @@ namespace DocsGenerator
                 return output;
             } else if (Kind == RecordKind.Field)
             {
+                string output =
+                    $"### {Identifier.Name}\n" +
+                    $"*{Signature}*  \n" +
+                    $"*{Identifier.Qualifier}*\n\n";
 
+                output += "#### Summary\n" + (Program.XMLtoMD(documentation.Element("summary")) ?? "*No summary provided*") + "\n\n";
+                var remarks = Program.XMLtoMD(documentation.Element("remarks"));
+                if (remarks != null) output += "#### Remarks\n" + remarks + "\n\n";
+
+                return output;
             } else if (Kind == RecordKind.Property)
             {
+                string output =
+                    $"### {Identifier.Name}\n" +
+                    $"*{Signature}*  \n" +
+                    $"*{Identifier.Qualifier}*\n\n";
 
+                output += "#### Summary\n" + (Program.XMLtoMD(documentation.Element("summary")) ?? "*No summary provided*") + "\n\n";
+                var remarks = Program.XMLtoMD(documentation.Element("remarks"));
+                if (remarks != null) output += "#### Remarks\n" + remarks + "\n\n";
+
+                return output;
             } else if (Kind == RecordKind.Method)
             {
+                string output =
+                    $"### {Identifier.Name}\n" +
+                    $"*{Signature}*  \n" +
+                    $"*{Identifier.Qualifier}*\n\n";
 
+                output += "#### Summary\n" + (Program.XMLtoMD(documentation.Element("summary")) ?? "*No summary provided*") + "\n\n";
+                var remarks = Program.XMLtoMD(documentation.Element("remarks"));
+                if (remarks != null) output += "#### Remarks\n" + remarks + "\n\n";
+
+                return output;
             } else if (Kind == RecordKind.EnumMember)
             {
+                string output =
+                    $"### {Identifier.Name}\n" +
+                    $"*{Identifier.Qualifier}*\n\n";
 
+                output += "#### Summary\n" + (Program.XMLtoMD(documentation.Element("summary")) ?? "*No summary provided*") + "\n\n";
+                var remarks = Program.XMLtoMD(documentation.Element("remarks"));
+                if (remarks != null) output += "#### Remarks\n" + remarks + "\n\n";
+
+                return output;
             } else
             {
                 return "";

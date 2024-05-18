@@ -9,7 +9,7 @@ using System.Xml.Linq;
 #nullable enable
 namespace DocsGenerator
 {
-    public delegate void TraverserDelegate<T>(string path, UnifiedTreeNode<T> node);
+    public delegate (Tout, bool) TraverserDelegate<in Tin, TTree, Tout>(Tin input, string path, UnifiedTreeNode<TTree> node);
 
     public class UnifiedTree<T>
     {
@@ -60,9 +60,11 @@ namespace DocsGenerator
             Root.EnsureNode(path.Split(seperator), value);
         }
 
-        public void Traverse(TraverserDelegate<T> @delegate)
+        public List<Tout> Traverse<Tin, Tout>(TraverserDelegate<Tin, T, Tout> @delegate, Tin input, out bool canceled, bool includeNull = false)
         {
-            Root.Traverse(@delegate);
+            List<Tout> result = new();
+            canceled = Root.Traverse(@delegate, input, result, includeNull);
+            return result;
         }
     }
     public class UnifiedTreeNode<T>
@@ -91,8 +93,10 @@ namespace DocsGenerator
 
         public UnifiedTreeNode<T> Clone(UnifiedTree<T> forTree, UnifiedTreeNode<T>? parent)
         {
-            UnifiedTreeNode<T> node = new(Name, Value, forTree, parent);
-            node.hasValue = HasValue;
+            UnifiedTreeNode<T> node = new(Name, Value, forTree, parent)
+            {
+                hasValue = HasValue
+            };
             foreach (var c in Children())
             {
                 c.Clone(forTree, node);
@@ -214,13 +218,20 @@ namespace DocsGenerator
             }
         }
 
-        public void Traverse(TraverserDelegate<T> @delegate)
+        public bool Traverse<Tin, Tout>(TraverserDelegate<Tin, T, Tout> @delegate, Tin input, List<Tout> results, bool includeNull)
         {
-            @delegate(Path, this);
+            (Tout result, bool cancel) = @delegate(input, Path, this);
+            if (result != null || includeNull)
+            {
+                results.Add(result);
+            }
+
+            if (cancel) return true;
             foreach (var child in Children())
             {
-                child.Traverse(@delegate);
+                if (child.Traverse(@delegate, input, results, includeNull)) return true;
             }
+            return false;
         }
 
         public void Retree(UnifiedTree<T> tree)
